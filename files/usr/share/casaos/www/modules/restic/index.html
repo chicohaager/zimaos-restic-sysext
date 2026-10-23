@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+  <title>restic Backup</title>
+  <link rel="icon" type="image/svg+xml" href="./appicon.svg">
+  <script>
+    try { var t = localStorage.getItem('restic.theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="./styles.css?v=@VERSION@">
+  <style>
+    .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 13px; }
+    .kv dt { color: var(--text-muted); }
+    .kv dd { overflow-wrap: anywhere; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .form-grid label, .stack label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+    .stack { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+    textarea { min-height: 70px; font-family: var(--font-mono, monospace); font-size: 12px; }
+    pre.cfg { background: var(--neutral-tint); padding: 12px; border-radius: 10px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .job-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+    .job-head h3 { font-size: 17px; }
+    .job-head .app-actions { margin-left: auto; margin-top: 0; }
+    .snaps { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title-row">
+      <h1><img src="./appicon.svg" alt="">restic Backup</h1>
+      <span class="version">v@VERSION@</span>
+      <div class="header-tools">
+        <select id="theme-select" aria-label="Theme">
+          <option value="auto">Theme: auto</option>
+          <option value="light">Theme: light</option>
+          <option value="dark">Theme: dark</option>
+        </select>
+        <button id="refresh-btn" class="btn-secondary">Refresh</button>
+      </div>
+    </div>
+    <p class="subtitle">Backup jobs on this host. Jobs live in <span class="mono" id="base-dir">/DATA/AppData/restic</span>; restores go into a new folder under <span class="mono" id="restore-dir">/DATA/restic-restore</span>, never over the originals. This tile never deletes snapshots.</p>
+    <div id="status" role="status" aria-live="polite"></div>
+  </header>
+
+  <main>
+    <div id="jobs"><div class="loading">Loading&hellip;</div></div>
+
+    <form id="new-job" class="card" autocomplete="off">
+      <h2 class="section-title">New backup job</h2>
+      <div class="form-grid">
+        <label>Name<input type="text" name="name" value="daten" maxlength="40" pattern="[A-Za-z0-9_\-]{1,40}" required></label>
+        <label>Repository (folder or restic URL)<input type="text" name="repository" placeholder="/media/Backup/restic or rest:http://host:8000/name" required></label>
+        <label>Password (empty: generate one)<input type="password" name="password" autocomplete="new-password"></label>
+        <label>Daily at (empty: by hand only)<input type="time" name="schedule" value="03:00"></label>
+      </div>
+      <div class="stack">
+        <label>Folders to back up, one per line<textarea name="paths" required>/DATA/AppData</textarea></label>
+        <label>Exclude, one pattern per line (optional)<textarea name="excludes" placeholder="/DATA/AppData/*/cache"></textarea></label>
+      </div>
+      <label class="row" style="margin:10px 0;font-size:13px"><input type="checkbox" name="init" checked> create the repository if there is none at this location</label>
+      <p class="muted" style="font-size:12px;margin:0 0 10px">The password is the only key to the backup: without it nobody, you included, can read the repository. A generated one is shown once after saving and stays readable here with <b>Show password</b>.</p>
+      <button type="submit" class="btn-primary">Save job</button>
+    </form>
+  </main>
+
+  <template id="secret-dialog">
+    <div class="modal-overlay">
+      <div class="card modal" style="max-width:560px">
+        <h3>Password of <span class="job-name"></span></h3>
+        <p>Keep it somewhere else too (password manager): it is the only way to read this backup.</p>
+        <pre class="cfg mono"></pre>
+        <div class="app-actions">
+          <button class="btn-secondary" data-act="copy">Copy</button>
+          <button class="btn-primary" data-act="close">Done</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script src="./common.js?v=@VERSION@"></script>
+  <script src="./app.js?v=@VERSION@"></script>
+</body>
+</html>
