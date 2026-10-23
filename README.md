@@ -1,6 +1,6 @@
 # restic for ZimaOS
 
-**Version 1.0.0** · ZimaOS 1.8.0 (amd64) · sysext module `restic`
+**Version 1.0.1** · ZimaOS 1.8.0 (amd64) · sysext module `restic`
 
 [restic](https://restic.net), the backup program, as a native ZimaOS module — no container: it runs on the host and reads `/DATA` and the attached disks directly.
 
