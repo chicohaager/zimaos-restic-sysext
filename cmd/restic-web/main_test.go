@@ -291,6 +291,27 @@ func TestScheduleAndDelete(t *testing.T) {
 	}
 }
 
+// A run that warned (exit 3, missing folder) leaves its service "failed"; removing
+// the job must clear that, or `systemctl --failed` lists a unit that no longer exists
+// (measured on ZimaOS 1.8.0, 2026-10-23: restic-zima-demo.service "not-found failed").
+func TestRemoveClearsFailedState(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	fake := filepath.Join(dir, "systemctl")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho \"$*\" >> "+log+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command("sh", script, "remove", "plan")
+	c.Env = append(os.Environ(), "RESTIC_ZIMA_DIR="+dir, "RESTIC_ZIMA_UNIT_DIR="+dir, "RESTIC_ZIMA_SYSTEMCTL="+fake)
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("remove: %v %s", err, out)
+	}
+	b, _ := os.ReadFile(log)
+	if !strings.Contains(string(b), "reset-failed restic-zima-plan.service") {
+		t.Fatalf("remove did not clear the failed state; systemctl calls:\n%s", b)
+	}
+}
+
 func TestRestoreRefusesAnExistingTarget(t *testing.T) {
 	w := realRun(t)
 	if res, out := call(t, "POST", "/restic/jobs", w.job("ziel", filepath.Join(t.TempDir(), "repo"), nil)); res.Code != 200 {

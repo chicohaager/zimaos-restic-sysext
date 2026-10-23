@@ -105,6 +105,8 @@ remove)
   $SC stop "$U.service" 2>/dev/null || true
   rm -f "$UNITS/$U.timer" "$UNITS/$U.service"
   $SC daemon-reload
+  # a run that warned (exit 3) leaves the service "failed" — without this it stays in systemctl --failed as "not-found"
+  $SC reset-failed "$U.service" "$U.timer" 2>/dev/null || true
   echo "$N: units removed"
   ;;
 restore)
