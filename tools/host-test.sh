@@ -12,7 +12,7 @@ fail() { bad=$((bad + 1)); echo "FAIL $1"; }
 
 if [ "${1:-}" = cleanup ]; then
   restic-zima remove hosttest
-  rm -rf "$J" "$R" "$SRC" /DATA/restic-restore/hosttest-*
+  rm -rf "$J" "$R" "$SRC" /DATA/restic-restore/hosttest-* /DATA/AppData/restic-tiletest-repo* /DATA/restic-restore/tiletest-*
   rmdir /DATA/restic-restore 2>/dev/null
   echo "cleanup done: $(ls -d "$J" "$R" "$SRC" /etc/systemd/system/restic-zima-hosttest.* 2>/dev/null | wc -l) test paths left"
   exit 0
