@@ -48,6 +48,8 @@ sudo restic-zima restore <job> <snapshot-id> /DATA/restic-restore/by-hand
 
 ## Install (on the ZimaOS host)
 
+With the [Module Manager](https://github.com/chicohaager/modmanager) (v0.2.5 or later): tab **Catalog**, **restic Backup**, **Install** — it checks the release checksum and refuses an image that would replace files of ZimaOS. By hand:
+
 ```sh
 cd /tmp
 curl -fsSLO https://github.com/chicohaager/zimaos-restic-sysext/releases/latest/download/restic-amd64.raw
