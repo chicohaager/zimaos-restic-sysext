@@ -1,0 +1,21 @@
+[Unit]
+Description=restic tile for ZimaOS (backup jobs, snapshots, restore)
+Documentation=https://github.com/chicohaager/zimaos-restic-sysext
+After=network-online.target zimaos-gateway.service
+Wants=network-online.target
+RequiresMountsFor=/DATA/AppData
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/restic-web
+Restart=always
+RestartSec=5
+# Root in the host's namespaces: it writes the files in /DATA/AppData/restic, reads every path it backs up and runs
+# restic-zima, systemctl and systemd-run. No Protect*/Private* directives — they would give the service a
+# private mount namespace (measured for modmanager on 1.8.0).
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

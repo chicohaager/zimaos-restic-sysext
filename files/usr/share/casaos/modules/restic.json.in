@@ -1,0 +1,18 @@
+{
+  "name": "restic",
+  "version": "v@VERSION@",
+  "ui": {
+    "name": "restic",
+    "title": { "en_us": "restic Backup", "de_de": "restic Backup" },
+    "prefetch": true,
+    "show": true,
+    "entry": "/modules/restic/index.html",
+    "icon": "/modules/restic/appicon.svg",
+    "description": "restic backups: jobs with a daily time, snapshots, restore into a new folder",
+    "formality": {
+      "type": "newtab",
+      "props": { "width": "100vh", "height": "100vh", "hasModalCard": true, "animation": "zoom-in" }
+    }
+  },
+  "services": [ { "name": "restic-web" } ]
+}

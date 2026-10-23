@@ -1,0 +1,141 @@
+#!/bin/sh
+# Backup jobs in /DATA/AppData/restic/jobs/<job>/ (repository, password, paths, excludes, schedule).
+#   restic-zima run <job>                      back up now (what the timer runs); writes last.json
+#   restic-zima units <job>                    write the job's service; with a schedule also its daily timer
+#   restic-zima remove <job>                   stop the timer, remove both units (the job files stay)
+#   restic-zima restore <job> <snapshot> <dir> restore a snapshot into a NEW directory; writes restore.json
+#   restic-zima restic <job> <args...>         restic with the job's repository and password (snapshots, check …)
+#   restic-zima list                           jobs and their timers
+# Nothing here forgets or prunes snapshots: deleting backups stays a decision made by hand.
+set -eu
+BASE="${RESTIC_ZIMA_DIR:-/DATA/AppData/restic}"
+UNITS="${RESTIC_ZIMA_UNIT_DIR:-/etc/systemd/system}"
+SC="${RESTIC_ZIMA_SYSTEMCTL:-systemctl}"
+RESTIC="${RESTIC_ZIMA_RESTIC:-/usr/bin/restic}"
+usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+job() {
+  case "$1" in *[!a-zA-Z0-9_-]*|"") echo "invalid job name: $1 (letters, digits, _ and - only)" >&2; exit 2 ;; esac
+  [ "${#1}" -le 40 ] || { echo "job name too long: $1" >&2; exit 2; }
+  J="$BASE/jobs/$1"
+  [ -f "$J/repository" ] && [ -f "$J/password" ] || { echo "no job $1 in $BASE/jobs" >&2; exit 1; }
+}
+r() { "$RESTIC" --repository-file "$J/repository" --password-file "$J/password" --cache-dir "$BASE/cache" "$@"; }
+now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+# JSON string from the first line of stdin (quotes, backslashes and control characters escaped).
+jstr() { v=$(head -n 1 | sed 's/\\/\\\\/g; s/"/\\"/g; s/[[:cntrl:]]/ /g'); printf '"%s"' "$v"; }
+
+CMD="${1:-}"
+case "$CMD" in
+run)
+  job "${2:-}"; N="$2"
+  exec 9>"$J/.lock"
+  flock -n 9 || { echo "a backup of $N is running already" >&2; exit 75; }
+  start=$(now)
+  # restic skips a path that does not exist with a warning and still exits 0 (measured 0.19.1):
+  # a missing path is counted here and turns the run into a warning.
+  missing=0; first=""
+  while IFS= read -r p || [ -n "$p" ]; do
+    [ -n "$p" ] || continue
+    if [ ! -e "$p" ]; then missing=$((missing + 1)); [ -n "$first" ] || first="$p"; fi
+  done < "$J/paths"
+  set -- backup --files-from "$J/paths" --tag "zima-$N" --json
+  [ -s "$J/excludes" ] && set -- "$@" --exclude-file "$J/excludes"
+  set +e
+  r "$@" > "$J/.run.out" 2> "$J/last.log"
+  rc=$?
+  set -e
+  sum=$(grep '"message_type":"summary"' "$J/.run.out" | tail -n 1)
+  [ -n "$sum" ] || sum=null
+  err=$(grep -v '^[[:space:]]*$' "$J/last.log" | tail -n 1 | jstr)
+  miss=$(printf '%s' "$first" | jstr)
+  printf '{"start":"%s","end":"%s","rc":%d,"missing_paths":%d,"first_missing":%s,"last_message":%s,"summary":%s}\n' \
+    "$start" "$(now)" "$rc" "$missing" "$miss" "$err" "$sum" > "$J/.last.json"
+  mv "$J/.last.json" "$J/last.json"
+  rm -f "$J/.run.out"
+  [ "$rc" -eq 0 ] && [ "$missing" -gt 0 ] && { echo "backup done, but $missing path(s) missing, first: $first" >&2; exit 3; }
+  exit "$rc"
+  ;;
+units)
+  job "${2:-}"; N="$2"; U="restic-zima-$N"
+  cat > "$UNITS/$U.service" <<EOF
+# Written by restic-zima (restic module for ZimaOS). /usr/bin comes from the sysext,
+# merged by systemd-sysext.service (measured 1.8.0: active ~9 s after boot, before timers.target).
+[Unit]
+Description=restic backup job $N
+After=systemd-sysext.service network-online.target
+Wants=network-online.target
+RequiresMountsFor=$BASE
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/restic-zima run $N
+Nice=10
+IOSchedulingClass=idle
+EOF
+  S=$(head -n 1 "$J/schedule" 2>/dev/null || true)
+  if [ -n "$S" ]; then
+    case "$S" in [0-2][0-9]:[0-5][0-9]) ;; *) echo "schedule must be HH:MM: $S" >&2; exit 2 ;; esac
+    cat > "$UNITS/$U.timer" <<EOF
+# Written by restic-zima. Persistent: a run missed while the host was off follows at the next boot.
+[Unit]
+Description=restic backup job $N, daily at $S
+
+[Timer]
+OnCalendar=*-*-* $S:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+    $SC daemon-reload
+    $SC enable "$U.timer"
+    $SC restart "$U.timer"
+    echo "$N: daily at $S"
+  else
+    if [ -f "$UNITS/$U.timer" ]; then $SC disable --now "$U.timer" || true; rm -f "$UNITS/$U.timer"; fi
+    $SC daemon-reload
+    echo "$N: no schedule (run by hand)"
+  fi
+  ;;
+remove)
+  N="${2:-}"
+  case "$N" in *[!a-zA-Z0-9_-]*|"") echo "invalid job name: $N" >&2; exit 2 ;; esac
+  U="restic-zima-$N"
+  if [ -f "$UNITS/$U.timer" ]; then $SC disable --now "$U.timer" || true; fi
+  $SC stop "$U.service" 2>/dev/null || true
+  rm -f "$UNITS/$U.timer" "$UNITS/$U.service"
+  $SC daemon-reload
+  echo "$N: units removed"
+  ;;
+restore)
+  job "${2:-}"; N="$2"; SNAP="${3:-}"; DST="${4:-}"
+  case "$SNAP" in *[!a-f0-9]*|"") echo "snapshot: its id (hex)" >&2; exit 2 ;; esac
+  case "$DST" in /*) ;; *) echo "target must be an absolute path" >&2; exit 2 ;; esac
+  [ ! -e "$DST" ] || { echo "target exists already: $DST (restore only into a new directory)" >&2; exit 1; }
+  mkdir -p "$DST"
+  start=$(now)
+  set +e
+  r restore "$SNAP" --target "$DST" > "$J/restore.log" 2>&1
+  rc=$?
+  set -e
+  msg=$(grep -v '^[[:space:]]*$' "$J/restore.log" | tail -n 1 | jstr)
+  t=$(printf '%s' "$DST" | jstr)
+  printf '{"snapshot":"%s","target":%s,"start":"%s","end":"%s","rc":%d,"last_message":%s}\n' \
+    "$SNAP" "$t" "$start" "$(now)" "$rc" "$msg" > "$J/.restore.json"
+  mv "$J/.restore.json" "$J/restore.json"
+  exit "$rc"
+  ;;
+restic)
+  job "${2:-}"; shift 2
+  r "$@"
+  ;;
+list)
+  for d in "$BASE"/jobs/*/; do
+    [ -f "$d/repository" ] || continue
+    n=$(basename "$d")
+    if [ -f "$UNITS/restic-zima-$n.timer" ]; then t="daily $(head -n 1 "$d/schedule")"; else t="by hand"; fi
+    echo "$n: $t"
+  done
+  ;;
+*) usage ;;
+esac
