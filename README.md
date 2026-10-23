@@ -46,10 +46,15 @@ sudo restic-zima restic <job> check
 sudo restic-zima restore <job> <snapshot-id> /DATA/restic-restore/by-hand
 ```
 
-## Install
+## Install (on the ZimaOS host)
 
 ```sh
-sudo zpkg install /path/to/restic.raw
+cd /tmp
+curl -fsSLO https://github.com/chicohaager/zimaos-restic-sysext/releases/latest/download/restic-amd64.raw
+curl -fsSLO https://github.com/chicohaager/zimaos-restic-sysext/releases/latest/download/restic-amd64.raw.sha256
+sha256sum -c restic-amd64.raw.sha256
+mv restic-amd64.raw restic.raw              # zpkg takes the module name from the file name
+sudo zpkg install /tmp/restic.raw
 ```
 
 zpkg starts `restic-web`; the tile appears on the dashboard. Uninstalling the module leaves the jobs in `/DATA/AppData/restic` and their units in `/etc/systemd/system`; a timer left behind fails until the module is back — delete the jobs in the tile first if they should stop.
