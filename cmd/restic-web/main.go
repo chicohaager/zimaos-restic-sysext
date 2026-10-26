@@ -42,10 +42,16 @@ var (
 var mu sync.Mutex
 
 func main() {
-	webmod.Run(webmod.Options{
+	webmod.Run(options())
+}
+
+func options() webmod.Options {
+	return webmod.Options{
 		Name: "restic", Service: "restic-web", Binary: "/usr/bin/restic-web",
 		Route: "/restic", Version: version, API: api,
-	})
+		// 0777 without sticky bit on ZimaOS 1.8: checked before the tile reads the jobs (KB §79.11)
+		DataDirs: []string{baseDir},
+	}
 }
 
 func api(verify func(http.Handler) http.Handler) http.Handler {

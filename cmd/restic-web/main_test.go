@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,6 +21,9 @@ import (
 // Without RESTIC_BIN they are skipped, the pure tests still run.
 var script, _ = filepath.Abs("../../files/usr/bin/restic-zima")
 
+// guard is lintux-modkit's appdata-guard.sh, which build.sh puts into the image.
+var guard, _ = filepath.Abs("../../../lintux-modkit/sysext/appdata-guard.sh")
+
 type world struct {
 	calls [][]string // systemctl and systemd-run calls
 	src   string     // a directory with files to back up
@@ -32,6 +36,9 @@ func realRun(t *testing.T) *world {
 		t.Skip("RESTIC_BIN not set")
 	}
 	baseDir, unitDir, restoreDir = t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "restore")
+	if err := os.Chmod(baseDir, 0o755); err != nil { // the folder check refuses group-writable (umask 002)
+		t.Fatal(err)
+	}
 	w := &world{src: t.TempDir()}
 	for f, text := range map[string]string{"a.txt": "eins\n", "scratch.tmp": "weg\n"} {
 		if err := os.WriteFile(filepath.Join(w.src, f), []byte(text), 0o644); err != nil {
@@ -39,7 +46,8 @@ func realRun(t *testing.T) *world {
 		}
 	}
 	env := append(os.Environ(), "RESTIC_ZIMA_DIR="+baseDir, "RESTIC_ZIMA_UNIT_DIR="+unitDir,
-		"RESTIC_ZIMA_SYSTEMCTL=true", "RESTIC_ZIMA_RESTIC="+bin)
+		"RESTIC_ZIMA_SYSTEMCTL=true", "RESTIC_ZIMA_RESTIC="+bin, "RESTIC_ZIMA_GUARD="+guard,
+		fmt.Sprintf("APPDATA_GUARD_UID=%d", os.Getuid()))
 	shell := func(ctx context.Context, args ...string) ([]byte, error) {
 		c := exec.CommandContext(ctx, "sh", append([]string{script}, args...)...)
 		c.Env = env
@@ -104,9 +112,9 @@ func TestValidRepository(t *testing.T) {
 func TestMaskRepository(t *testing.T) {
 	cases := map[string]string{
 		"rest:https://backup:geheim@backup.example:8000/zima": "rest:https://backup:***@backup.example:8000/zima",
-		"rest:http://192.0.2.10:8000/zima":                   "rest:http://192.0.2.10:8000/zima",
-		"/media/Backup/restic":                               "/media/Backup/restic",
-		"sftp:user@host:/srv/restic":                         "sftp:user@host:/srv/restic",
+		"rest:http://192.0.2.10:8000/zima":                    "rest:http://192.0.2.10:8000/zima",
+		"/media/Backup/restic":                                "/media/Backup/restic",
+		"sftp:user@host:/srv/restic":                          "sftp:user@host:/srv/restic",
 	}
 	for in, want := range cases {
 		if got := maskRepository(in); got != want {
@@ -296,13 +304,17 @@ func TestScheduleAndDelete(t *testing.T) {
 // (measured on ZimaOS 1.8.0, 2026-10-23: restic-zima-demo.service "not-found failed").
 func TestRemoveClearsFailedState(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	log := filepath.Join(dir, "calls")
 	fake := filepath.Join(dir, "systemctl")
 	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho \"$*\" >> "+log+"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	c := exec.Command("sh", script, "remove", "plan")
-	c.Env = append(os.Environ(), "RESTIC_ZIMA_DIR="+dir, "RESTIC_ZIMA_UNIT_DIR="+dir, "RESTIC_ZIMA_SYSTEMCTL="+fake)
+	c.Env = append(os.Environ(), "RESTIC_ZIMA_DIR="+dir, "RESTIC_ZIMA_UNIT_DIR="+dir, "RESTIC_ZIMA_SYSTEMCTL="+fake,
+		"RESTIC_ZIMA_GUARD="+guard, fmt.Sprintf("APPDATA_GUARD_UID=%d", os.Getuid()))
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("remove: %v %s", err, out)
 	}
@@ -325,3 +337,36 @@ func TestRestoreRefusesAnExistingTarget(t *testing.T) {
 }
 
 func errorsAs(err error, target **exec.ExitError) bool { return errors.As(err, target) }
+
+// /DATA/AppData is 0777 without the sticky bit on ZimaOS 1.8 (KB §79.11): a job's
+// folder holds the repository, the password and the paths root backs up, so a
+// swapped folder would send any file of the host to someone else's repository.
+// restic-zima checks the folder before every command, the tile at its start.
+func TestAJobFolderRootCannotTrustIsRefused(t *testing.T) {
+	found := false
+	for _, d := range options().DataDirs {
+		found = found || d == baseDir
+	}
+	if !found {
+		t.Errorf("tile: DataDirs %v without %s", options().DataDirs, baseDir)
+	}
+	base := t.TempDir()
+	if err := os.Chmod(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(base, "planted")
+	if err := os.MkdirAll(filepath.Join(real, "jobs", "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "restic")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command("sh", script, "run", "x")
+	c.Env = append(os.Environ(), "RESTIC_ZIMA_DIR="+link, "RESTIC_ZIMA_GUARD="+guard, fmt.Sprintf("APPDATA_GUARD_UID=%d", os.Getuid()),
+		"RESTIC_ZIMA_RESTIC=/bin/false")
+	out, err := c.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "ist ein Symlink") {
+		t.Fatalf("restic-zima run in a symlinked folder: err %v, %s", err, out)
+	}
+}
