@@ -36,6 +36,8 @@ sudo restic-zima restic <job> forget --keep-daily 7 --keep-weekly 5 --keep-month
 
 The units live in `/etc`, which survives reboots on ZimaOS; `After=systemd-sysext.service` makes a run that was missed while the host was off wait until `/usr/bin` from the module is merged (measured on 1.8.0: systemd-sysext.service active ~9 s after boot, before timers.target).
 
+**Folder check** (since 1.0.1): `/DATA/AppData` is writable by everyone on ZimaOS 1.8 (mode 0777 without the sticky bit; the share of `/DATA` is writable over SMB), so another user could replace `/DATA/AppData/restic` with a folder of their own — jobs that make root back up any file into their repository. Before every `restic-zima` command and before the tile reads the jobs, the module sets the sticky bit on `/DATA/AppData` (then only a folder's owner can rename it) and refuses a `restic` folder that is a symlink, not root's, or writable by others (lintux-modkit `appdata`).
+
 ## Command line
 
 ```sh

@@ -12,6 +12,7 @@ BASE="${RESTIC_ZIMA_DIR:-/DATA/AppData/restic}"
 UNITS="${RESTIC_ZIMA_UNIT_DIR:-/etc/systemd/system}"
 SC="${RESTIC_ZIMA_SYSTEMCTL:-systemctl}"
 RESTIC="${RESTIC_ZIMA_RESTIC:-/usr/bin/restic}"
+GUARD="${RESTIC_ZIMA_GUARD:-/usr/libexec/restic/appdata-guard.sh}"
 usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 job() {
   case "$1" in *[!a-zA-Z0-9_-]*|"") echo "invalid job name: $1 (letters, digits, _ and - only)" >&2; exit 2 ;; esac
@@ -25,6 +26,10 @@ now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 jstr() { v=$(head -n 1 | sed 's/\\/\\\\/g; s/"/\\"/g; s/[[:cntrl:]]/ /g'); printf '"%s"' "$v"; }
 
 CMD="${1:-}"
+# /DATA/AppData is writable by everyone on ZimaOS 1.8 (0777, no sticky bit, KB §79.11): a job's
+# folder names the repository, the password and the paths root backs up. Before any command the
+# guard sets the sticky bit and refuses a folder that is not root's or a symlink (lintux-modkit).
+case "$CMD" in ""|-h|--help|help) ;; *) sh "$GUARD" "$BASE" || exit 1 ;; esac
 case "$CMD" in
 run)
   job "${2:-}"; N="$2"
