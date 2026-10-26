@@ -67,6 +67,7 @@ zpkg starts `restic-web`; the tile appears on the dashboard. Uninstalling the mo
 
 ```sh
 sh build.sh            # amd64; sh build.sh arm64 for arm64 (arm64 untested on a host)
+tools/check-reproducible.sh  # before a release: builds twice (umask 022 and 002) and fails when the bytes differ
 ```
 
 Needs Go, `curl`, `bzip2`, `squashfs-tools` and [lintux-modkit](https://github.com/chicohaager/lintux-modkit) next to this repository (or `LINTUX_MODKIT=`). The backend tests run the real restic and `restic-zima` against a repository in a temp directory.
