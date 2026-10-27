@@ -73,7 +73,7 @@ tools/check-reproducible.sh  # before a release: builds three times (umask 022, 
 
 Needs Go, `curl`, `bzip2`, `squashfs-tools` and [lintux-modkit](https://github.com/chicohaager/lintux-modkit) next to this repository (or `LINTUX_MODKIT=`). The backend tests run the real restic and `restic-zima` against a repository in a temp directory.
 
-On a host: `sudo sh tools/host-test.sh` (command line and timer, as root), then from the build machine
+On a host, with lintux-modkit's `tools/hosttest-lib.sh` copied next to it: `sudo sh tools/host-test.sh` (command line and timer, as root; a failure or abort removes what it made), then from the build machine
 `python3 tools/tile-test.py --url http://<host> --user <name> --password-file <file>` (the tile through the
 gateway with a real login); `sudo sh tools/host-test.sh cleanup` removes what both created.
 
