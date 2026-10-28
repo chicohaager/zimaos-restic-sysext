@@ -71,6 +71,8 @@ tools/check-reproducible.sh  # before a release: builds three times (umask 022, 
 ../lintux-modkit/tools/check-release.sh . v<version> restic# after the release: rebuilds the tag, same bytes as the asset
 ```
 
+`build.sh` builds only against the lintux-modkit commit in `lintux-modkit.ref`, without local changes — both for the scripts (`../lintux-modkit` or `LINTUX_MODKIT=`) and for the directory Go compiles (go.mod's `replace` or a `go.work`; `LINTUX_MODKIT` does not move it): `scripts/modkit-check.sh` asks `go list` which one that is. `MODKIT_DEV=1` builds anyway, with a warning, not for a release. `bash tools/test-modkit-check.sh` tests the check.
+
 Needs Go, `curl`, `bzip2`, `squashfs-tools` and [lintux-modkit](https://github.com/chicohaager/lintux-modkit) next to this repository (or `LINTUX_MODKIT=`). The backend tests run the real restic and `restic-zima` against a repository in a temp directory.
 
 On a host, with lintux-modkit's `tools/hosttest-lib.sh` copied next to it: `sudo sh tools/host-test.sh` (command line and timer, as root; a failure or abort removes what it made), then from the build machine
