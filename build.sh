@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 ARCH="${1:-amd64}"
 MODKIT="${LINTUX_MODKIT:-../lintux-modkit}"
 [ -f "$MODKIT/sysext/add-web.sh" ] || { echo "lintux-modkit with sysext/add-web.sh not found at $MODKIT (set LINTUX_MODKIT)" >&2; exit 1; }
+sh scripts/modkit-check.sh "$MODKIT"   # the lintux-modkit commit of lintux-modkit.ref, for the scripts and for Go, no local changes
 VERSION=$(cat VERSION)
 
 # Upstream release, pinned by version AND sha256 (from SHA256SUMS of the release, 2026-10-23).

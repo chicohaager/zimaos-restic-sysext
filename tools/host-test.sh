@@ -6,20 +6,25 @@
 # source /DATA/AppData/restic-hosttest-src, restores under /DATA/restic-restore/hosttest-*.
 set -u
 B=/DATA/AppData/restic; J=$B/jobs/hosttest; R=/DATA/AppData/restic-hosttest-repo; SRC=/DATA/AppData/restic-hosttest-src
-ok=0; bad=0
-pass() { ok=$((ok + 1)); echo "OK   $1"; }
-fail() { bad=$((bad + 1)); echo "FAIL $1"; }
+# pass/fail and the cleanup after a failure or abort: lintux-modkit tools/hosttest-lib.sh, copied next to this file
+. "$(dirname "$0")/hosttest-lib.sh"
+HT_LIST=/etc/lintux-hosttest/restic.list
 
-if [ "${1:-}" = cleanup ]; then
+restic_cleanup() {
   restic-zima remove hosttest
   rm -rf "$J" "$R" "$SRC" /DATA/restic-restore/hosttest-* /DATA/AppData/restic-tiletest-repo* /DATA/restic-restore/tiletest-* "$B"/jobs/.deleted/tiletest-*
   rmdir "$B/jobs/.deleted" 2>/dev/null
   rmdir /DATA/restic-restore 2>/dev/null
   echo "cleanup done: $(ls -d "$J" "$R" "$SRC" /etc/systemd/system/restic-zima-hosttest.* 2>/dev/null | wc -l) test paths left"
+}
+if [ "${1:-}" = cleanup ]; then
+  restic_cleanup
+  rm -f "$HT_LIST"
   exit 0
 fi
 
 [ -e "$J" ] && { echo "refusing: $J exists (run cleanup first)"; exit 1; }
+ht_init "$HT_LIST"; ht_made call restic_cleanup   # from here on a failure or abort runs restic_cleanup
 v=$(restic version 2>&1); case "$v" in "restic 0.19.1 "*) pass "restic: $v" ;; *) fail "restic version: $v" ;; esac
 a=$(systemctl is-active restic-web.service); [ "$a" = active ] && pass "restic-web active" || fail "restic-web: $a"
 
@@ -57,4 +62,4 @@ m=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["missing_pat
 [ "$rc" -eq 3 ] && [ "$m" = 1 ] && pass "missing folder: exit 3, missing_paths=1" || fail "missing folder: rc=$rc missing_paths=$m"
 
 echo "result: $ok OK, $bad FAIL"
-[ "$bad" -eq 0 ]
+ht_done

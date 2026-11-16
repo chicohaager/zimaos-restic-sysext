@@ -1,6 +1,6 @@
 # restic for ZimaOS
 
-**Version 1.0.1** · ZimaOS 1.8.0 (amd64) · sysext module `restic`
+**Version 1.0.2** · ZimaOS 1.8.0 (amd64) · sysext module `restic`
 
 [restic](https://restic.net), the backup program, as a native ZimaOS module — no container: it runs on the host and reads `/DATA` and the attached disks directly.
 
@@ -36,7 +36,7 @@ sudo restic-zima restic <job> forget --keep-daily 7 --keep-weekly 5 --keep-month
 
 The units live in `/etc`, which survives reboots on ZimaOS; `After=systemd-sysext.service` makes a run that was missed while the host was off wait until `/usr/bin` from the module is merged (measured on 1.8.0: systemd-sysext.service active ~9 s after boot, before timers.target).
 
-**Folder check** (since 1.0.1): `/DATA/AppData` is writable by everyone on ZimaOS 1.8 (mode 0777 without the sticky bit; the share of `/DATA` is writable over SMB), so another user could replace `/DATA/AppData/restic` with a folder of their own — jobs that make root back up any file into their repository. Before every `restic-zima` command and before the tile reads the jobs, the module sets the sticky bit on `/DATA/AppData` (then only a folder's owner can rename it) and refuses a `restic` folder that is a symlink, not root's, or writable by others (lintux-modkit `appdata`).
+**Folder check** (since 1.0.1): `/DATA/AppData` is writable by everyone on ZimaOS 1.8 (mode 0777 without the sticky bit; the share of `/DATA` is writable over SMB), so another user could replace `/DATA/AppData/restic` with a folder of their own — jobs that make root back up any file into their repository. Before every `restic-zima` command and before the tile reads the jobs, the module sets the sticky bit on `/DATA/AppData` (then only a folder's owner can rename it) and refuses a `restic` folder that is a symlink, not root's, or writable by others (lintux-modkit `appdata`). Since 1.0.2, a `/DATA` that another user owns (uid 999 on one ZimaOS 1.8 box — that user could rename `/DATA/AppData`) is given back to root, with the way back in the log.
 
 ## Command line
 
@@ -71,9 +71,11 @@ tools/check-reproducible.sh  # before a release: builds three times (umask 022, 
 ../lintux-modkit/tools/check-release.sh . v<version> restic# after the release: rebuilds the tag, same bytes as the asset
 ```
 
+`build.sh` builds only against the lintux-modkit commit in `lintux-modkit.ref`, without local changes — both for the scripts (`../lintux-modkit` or `LINTUX_MODKIT=`) and for the directory Go compiles (go.mod's `replace` or a `go.work`; `LINTUX_MODKIT` does not move it): `scripts/modkit-check.sh` asks `go list` which one that is. `MODKIT_DEV=1` builds anyway, with a warning, not for a release. `bash tools/test-modkit-check.sh` tests the check.
+
 Needs Go, `curl`, `bzip2`, `squashfs-tools` and [lintux-modkit](https://github.com/chicohaager/lintux-modkit) next to this repository (or `LINTUX_MODKIT=`). The backend tests run the real restic and `restic-zima` against a repository in a temp directory.
 
-On a host: `sudo sh tools/host-test.sh` (command line and timer, as root), then from the build machine
+On a host, with lintux-modkit's `tools/hosttest-lib.sh` copied next to it: `sudo sh tools/host-test.sh` (command line and timer, as root; a failure or abort removes what it made), then from the build machine
 `python3 tools/tile-test.py --url http://<host> --user <name> --password-file <file>` (the tile through the
 gateway with a real login); `sudo sh tools/host-test.sh cleanup` removes what both created.
 
